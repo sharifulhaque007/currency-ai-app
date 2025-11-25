@@ -1,12 +1,13 @@
 import os
 import streamlit as st
-import anyio
+from concurrent.futures import ThreadPoolExecutor
 
 from google.adk.models.google_llm import Gemini
 from google.adk.tools import AgentTool
 from google.adk.agents import LlmAgent
 from google.adk.runners import InMemoryRunner
 from pydantic import BaseModel, Field
+import asyncio
 
 # -------------------------
 # Load API Key
@@ -49,12 +50,20 @@ agent.tools.append(tool)
 runner = InMemoryRunner(agent=agent)
 
 # -------------------------
+# Helper to run async in thread
+# -------------------------
+def run_agent_sync(user_input: str):
+    """Run async agent in a separate thread safely"""
+    return asyncio.run(runner.run(user_input))
+
+# -------------------------
 # Streamlit UI
 # -------------------------
 st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
 if st.button("Convert"):
-    # Safe async call from Streamlit main thread
-    response = anyio.from_thread.run(runner.run, user_input)
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(run_agent_sync, user_input)
+        response = future.result()
     st.write(response)
