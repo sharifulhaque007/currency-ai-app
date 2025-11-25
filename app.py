@@ -206,64 +206,137 @@ async def run_currency_conversion_kaggle(query):
         enhanced_runner = InMemoryRunner(agent=enhanced_currency_agent)
         
         # Kaggle notebook এ আপনি await currency_runner.run_debug() ব্যবহার করেছেন
-        # Streamlit এ আমরা run_debug এর পরিবর্তে run ব্যবহার করব
-        response = await enhanced_runner.run(input=query)
+        # Streamlit এ আমরা run_debug ব্যবহার করব
+        response = await enhanced_runner.run_debug(input=query)
         return response
         
     except Exception as e:
         st.error(f"Kaggle style conversion error: {e}")
         return None
 
-# Display response function - আপনার Kaggle helper function adapt করা
-def show_python_code_and_result(response):
-    """Your Kaggle notebook helper function adapted for Streamlit"""
-    if not response or not hasattr(response, 'messages'):
-        return
-        
-    for i in range(len(response.messages)):
-        message = response.messages[i]
-        # Check if the response contains a valid function call result from the code executor
-        if (hasattr(message, 'content') and 
-            hasattr(message.content, 'parts') and 
-            message.content.parts and 
-            hasattr(message.content.parts[0], 'function_response') and
-            message.content.parts[0].function_response and
-            hasattr(message.content.parts[0].function_response, 'response')):
-            
-            response_code = message.content.parts[0].function_response.response
-            if "result" in response_code and response_code["result"] != "```":
-                if "tool_code" in response_code["result"]:
-                    st.write("**Generated Python Code:**")
-                    st.code(response_code["result"].replace("tool_code", ""), language="python")
-                else:
-                    st.write("**Generated Python Response:**")
-                    st.write(response_code["result"])
-
-# Main conversion function
-async def run_conversion_simple(query):
-    """Simple approach without complex session management"""
+# Alternative approach - run_debug ছাড়া
+async def run_conversion_direct(query):
+    """Direct approach using the runner without debug"""
     try:
-        # Direct agent creation and execution
+        retry_config = types.HttpRetryOptions(
+            attempts=3,
+            exp_base=2,
+            initial_delay=1,
+            http_status_codes=[429, 500, 503, 504],
+        )
+
         calculation_agent = LlmAgent(
             name="CalculationAgent",
-            model=Gemini(model="gemini-1.5-flash"),
+            model=Gemini(model="gemini-1.5-flash", retry_options=retry_config),
             instruction="You output ONLY Python code for calculations.",
             code_executor=BuiltInCodeExecutor(),
         )
 
         currency_agent = LlmAgent(
             name="currency_agent",
-            model=Gemini(model="gemini-1.5-flash"),
+            model=Gemini(model="gemini-1.5-flash", retry_options=retry_config),
             instruction="Convert currency using the available tools. Use calculator for all math.",
             tools=[get_fee_for_payment_method, get_exchange_rate, AgentTool(agent=calculation_agent)],
         )
         
         runner = InMemoryRunner(agent=currency_agent)
-        response = await runner.run(input=query)
+        
+        # Try different method signatures
+        try:
+            # Method 1: Try without any parameters
+            response = await runner.run_debug()
+            return response
+        except TypeError:
+            try:
+                # Method 2: Try with just the query
+                response = await runner.run_debug(query)
+                return response
+            except TypeError:
+                try:
+                    # Method 3: Try run method instead
+                    response = await runner.run(query)
+                    return response
+                except Exception as e:
+                    st.error(f"All method attempts failed: {e}")
+                    return None
+        
+    except Exception as e:
+        st.error(f"Direct conversion error: {e}")
+        return None
+
+# Display response function - আপনার Kaggle helper function adapt করা
+def show_python_code_and_result(response):
+    """Your Kaggle notebook helper function adapted for Streamlit"""
+    if not response:
+        return
+        
+    # Check if response is a list (like in Kaggle) or an object
+    if isinstance(response, list):
+        messages = response
+    elif hasattr(response, 'messages'):
+        messages = response.messages
+    else:
+        st.write("Unknown response format:")
+        st.write(response)
+        return
+        
+    for i in range(len(messages)):
+        message = messages[i]
+        # Check if the response contains a valid function call result from the code executor
+        if (hasattr(message, 'content') and 
+            hasattr(message.content, 'parts') and 
+            message.content.parts and 
+            len(message.content.parts) > 0):
+            
+            part = message.content.parts[0]
+            if (hasattr(part, 'function_response') and
+                part.function_response and
+                hasattr(part.function_response, 'response')):
+                
+                response_code = part.function_response.response
+                if isinstance(response_code, dict) and "result" in response_code and response_code["result"] != "```":
+                    if "tool_code" in response_code["result"]:
+                        st.write("**Generated Python Code:**")
+                        st.code(response_code["result"].replace("tool_code", ""), language="python")
+                    else:
+                        st.write("**Generated Python Response:**")
+                        st.write(response_code["result"])
+            elif hasattr(part, 'text') and part.text:
+                # Display regular text response
+                text = part.text.strip()
+                if text:
+                    if "```" in text:
+                        st.code(text, language="python")
+                    else:
+                        st.write(text)
+
+# Simple manual agent execution
+async def manual_agent_execution(query):
+    """Manual agent execution mimicking Kaggle"""
+    try:
+        # Create agents exactly like Kaggle
+        calculation_agent = LlmAgent(
+            name="CalculationAgent",
+            model=Gemini(model="gemini-1.5-flash"),
+            instruction="Output ONLY Python code for calculations. No text.",
+            code_executor=BuiltInCodeExecutor(),
+        )
+
+        currency_agent = LlmAgent(
+            name="currency_agent",
+            model=Gemini(model="gemini-1.5-flash"),
+            instruction="Convert currency. Use tools for fees, rates, and calculations.",
+            tools=[get_fee_for_payment_method, get_exchange_rate, AgentTool(agent=calculation_agent)],
+        )
+        
+        runner = InMemoryRunner(agent=currency_agent)
+        
+        # Try the exact Kaggle approach
+        response = await runner.run_debug(query)
         return response
         
     except Exception as e:
-        st.error(f"Simple conversion error: {e}")
+        st.error(f"Manual agent error: {e}")
         return None
 
 # Main UI
@@ -312,47 +385,37 @@ if st.button("🚀 Convert Currency", type="primary", use_container_width=True):
                 # Create the query
                 query = f"Convert {amount} {base_currency} to {target_currency} using {payment_method}. Show me the precise calculation."
                 
-                # Try different approaches
-                st.write("Trying Kaggle notebook approach...")
-                response = asyncio.run(run_currency_conversion_kaggle(query))
+                # Try manual agent execution first
+                st.write("Trying manual agent execution...")
+                response = asyncio.run(manual_agent_execution(query))
                 
                 if response:
                     st.success("✅ Conversion Complete!")
                     st.markdown("---")
-                    
-                    # Display the response using your Kaggle function
                     show_python_code_and_result(response)
-                    
-                    # Also show raw response for debugging
-                    with st.expander("🔍 Debug - Raw Response"):
-                        st.write(response)
                 else:
-                    st.error("❌ No response received. Trying alternative approach...")
+                    st.error("❌ Manual agent failed. Showing manual calculation instead.")
                     
-                    # Try simple approach
-                    st.write("Trying simple approach...")
-                    response_simple = asyncio.run(run_conversion_simple(query))
-                    
-                    if response_simple:
-                        st.success("✅ Conversion Complete (Simple Approach)!")
-                        show_python_code_and_result(response_simple)
-                    else:
-                        st.error("❌ All conversion attempts failed")
+                # Always show manual calculation as fallback
+                st.markdown("---")
+                st.header("🔢 Manual Calculation Results")
+                show_manual_calculation(amount, base_currency, target_currency, payment_method)
                         
             except Exception as e:
                 st.error(f"❌ Error during conversion: {e}")
+                st.markdown("---")
+                st.header("🔢 Manual Calculation Results")
+                show_manual_calculation(amount, base_currency, target_currency, payment_method)
 
-# Quick manual calculation fallback
-st.markdown("---")
-st.header("🔢 Quick Manual Calculation")
-
-if st.button("Show Manual Calculation", help="Quick calculation without AI"):
+# Manual calculation function
+def show_manual_calculation(amount, base_currency, target_currency, payment_method):
+    """Show manual calculation results"""
     try:
         # Get fee
         fee_result = get_fee_for_payment_method(payment_method)
         if fee_result["status"] == "error":
             st.error(f"❌ {fee_result['error_message']}")
-            st.stop()
+            return
             
         fee_percentage = fee_result["fee_percentage"]
         fee_amount = amount * fee_percentage
@@ -362,7 +425,7 @@ if st.button("Show Manual Calculation", help="Quick calculation without AI"):
         rate_result = get_exchange_rate(base_currency, target_currency)
         if rate_result["status"] == "error":
             st.error(f"❌ {rate_result['error_message']}")
-            st.stop()
+            return
             
         exchange_rate = rate_result["rate"]
         final_amount = amount_after_fee * exchange_rate
@@ -381,6 +444,16 @@ if st.button("Show Manual Calculation", help="Quick calculation without AI"):
             st.metric("Amount After Fee", f"{amount_after_fee:.2f} {base_currency}")
             st.metric("Exchange Rate", f"{exchange_rate}")
             st.metric("Final Amount", f"{final_amount:.2f} {target_currency}")
+        
+        # Show calculation breakdown
+        st.markdown("### 📊 Calculation Breakdown")
+        st.write(f"```")
+        st.write(f"Original Amount: {amount} {base_currency}")
+        st.write(f"Fee ({fee_percentage*100}%): {fee_amount:.2f} {base_currency}")
+        st.write(f"Amount after fee: {amount_after_fee:.2f} {base_currency}")
+        st.write(f"Exchange rate: 1 {base_currency} = {exchange_rate} {target_currency}")
+        st.write(f"Final amount: {final_amount:.2f} {target_currency}")
+        st.write(f"```")
         
     except Exception as e:
         st.error(f"Manual calculation error: {e}")
