@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import asyncio
 from google.genai import types
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -138,6 +139,22 @@ enhanced_currency_agent = LlmAgent(
     ],
 )
 
+# Async function for running the agent
+async def run_currency_conversion(query):
+    """Run the currency conversion asynchronously"""
+    runner = InMemoryRunner(agent=enhanced_currency_agent)
+    response = await runner.run(query)
+    return response
+
+# Helper function to display response
+def display_response(response):
+    """Display the agent response in a formatted way"""
+    for message in response:
+        if hasattr(message, 'content') and hasattr(message.content, 'parts'):
+            for part in message.content.parts:
+                if hasattr(part, 'text') and part.text:
+                    st.write(part.text)
+
 # Streamlit UI
 st.header("💰 Currency Conversion")
 
@@ -166,25 +183,17 @@ if st.button("🚀 Convert Currency", type="primary"):
     else:
         with st.spinner("🔄 Processing your conversion..."):
             try:
-                # Create runner
-                runner = InMemoryRunner(agent=enhanced_currency_agent)
-                
                 # Query তৈরি করুন
                 query = f"Convert {amount} {base_currency} to {target_currency} using {payment_method}. Show me the precise calculation."
                 
-                # রান করুন (সিনক্রোনাসভাবে)
-                response = runner.run_sync(query)
+                # Async function run করুন
+                response = asyncio.run(run_currency_conversion(query))
                 
                 # রেস্পন্স ডিসপ্লে
                 st.success("✅ Conversion Complete!")
                 st.markdown("---")
                 
-                # রেস্পন্স কন্টেন্ট ডিসপ্লে
-                for message in response:
-                    if hasattr(message, 'content') and hasattr(message.content, 'parts'):
-                        for part in message.content.parts:
-                            if hasattr(part, 'text'):
-                                st.write(part.text)
+                display_response(response)
                 
             except Exception as e:
                 st.error(f"❌ Error during conversion: {e}")
