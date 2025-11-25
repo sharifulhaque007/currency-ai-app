@@ -89,19 +89,9 @@ runner = InMemoryRunner(agent=enhanced_currency_agent)
 st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using Gold Debit Card")
 
+
 if st.button("Convert"):
-
-    async def safe_run():
-        return await runner.run(user_input)
-
-    try:
-        # Try using running loop (Streamlit cloud)
-        loop = asyncio.get_running_loop()
-        response = loop.run_until_complete(safe_run())
-    except RuntimeError:
-        # If no loop exists (local)
-        response = asyncio.run(safe_run())
-
+    response = st.run(runner.run(user_input))   # <-- THIS FIXES EVERYTHING
     st.write(response)
 
 
