@@ -21,42 +21,47 @@ else:
 
 
 # -------------------------
-# Currency Tool
+# Tool Schema
 # -------------------------
 class ConvertArgs(BaseModel):
-    usd: float = Field(..., description="Amount of USD")
-
-
-class CurrencyConverter(AgentTool):
-    name = "usd_to_bdt"
-    description = "Convert USD to Bangladeshi Taka"
-    args_schema = ConvertArgs
-
-    def run(self, args: ConvertArgs):
-        rate = 120  # static rate for now
-        return {"bdt": args.usd * rate}
+    amount: float = Field(..., description="Amount in USD")
 
 
 # -------------------------
-# Model & Agent
+# Tool Definition
+# -------------------------
+class CurrencyConverter(AgentTool):
+    name: str = "usd_to_bdt"
+    description: str = "Convert USD to Bangladeshi Taka"
+    args_schema = ConvertArgs
+
+    async def run(self, args: ConvertArgs):
+        rate = 120  # static exchange rate
+        return {"bdt": args.amount * rate}
+
+
+# -------------------------
+# Model
 # -------------------------
 model = Gemini(model="gemini-2.0-flash")
 
+
+# -------------------------
+# Agent
+# -------------------------
 agent = LlmAgent(
-    name="CurrencyAgent",
+    name="currency_bot",
     model=model,
-    code_executor=BuiltInCodeExecutor(),
-    tools=[],   # empty for now, will attach later
-    instructions=[
-        "You are a currency conversion agent.",
-        "When someone asks conversion, call the tool."
-    ]
+    instructions="You help convert USD to BDT. Use the tool whenever conversion is asked.",
+    tools=[], 
+    code_executor=BuiltInCodeExecutor()
 )
 
-# Tool must be registered AFTER agent exists
+# attach tool (agent must exist first)
 tool = CurrencyConverter(agent=agent)
 agent.tools.append(tool)
 
+# runner
 runner = InMemoryRunner(agent=agent)
 
 
@@ -64,8 +69,12 @@ runner = InMemoryRunner(agent=agent)
 # UI
 # -------------------------
 st.title("💱 AI Currency Converter")
-query = st.text_input("Enter conversion query:", "Convert 40 USD to BDT")
+
+user_input = st.text_input("Enter request:", "Convert 50 USD to BDT")
 
 if st.button("Convert"):
-    response = runner.run(query)
-    st.success(response)
+    try:
+        output = runner.run(user_input)
+        st.success(output)
+    except Exception as e:
+        st.error(f"⚠️ Error: {e}")
