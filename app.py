@@ -9,7 +9,7 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("💱 Currency Converter Pro")
+st.title("💱 Currency Converter AI")
 st.markdown("বুদ্ধিমান কারেন্সি কনভার্টার - দ্রুত এবং নির্ভুল হিসাব")
 
 # Custom CSS for better styling
@@ -404,6 +404,6 @@ with tab3:
 # Footer
 st.markdown("---")
 st.markdown(
-    "<div style='text-align: center'><p>💱 Built with ❤️ | Currency Converter Pro v2.0</p></div>",
+    "<div style='text-align: center'><p>💱 Built with ❤️ | sharif by DigitalAidIT 🚀 </p></div>",
     unsafe_allow_html=True
 )
