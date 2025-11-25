@@ -91,7 +91,14 @@ async def run_agent_async(runner, user_input: str):
     context = {"input": user_input}
     return await runner.run(context)
 
+import anyio
+
 if st.button("Convert"):
-    loop = asyncio.get_event_loop()
-    response = loop.run_until_complete(run_agent_async(runner, user_input))
+    # context dict হিসেবে input পাঠাচ্ছি
+    context = {"input": user_input}
+    
+    # async runner কে safely call করতে anyio.from_thread.run ব্যবহার করো
+    response = anyio.from_thread.run(runner.run, context)
+    
     st.write(response)
+
