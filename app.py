@@ -158,7 +158,7 @@ async def run_currency_conversion_kaggle(query):
         # Calculation Agent - আপনার Kaggle code থেকে
         calculation_agent = LlmAgent(
             name="CalculationAgent",
-            model=Gemini(model="gemini-1.5-flash", retry_options=retry_config),
+            model=Gemini(model="gemini-2.5-flash", retry_options=retry_config),
             instruction="""You are a specialized calculator that ONLY responds with Python code. You are forbidden from providing any text, explanations, or conversational responses.
             
             Your task is to take a request for a calculation and translate it into a single block of Python code that calculates the answer.
