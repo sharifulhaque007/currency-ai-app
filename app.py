@@ -1,13 +1,12 @@
 import os
 import streamlit as st
+import asyncio
 
 from google.adk.models.google_llm import Gemini
 from google.adk.tools import AgentTool
 from google.adk.agents import LlmAgent
 from google.adk.runners import InMemoryRunner
-from google.adk.code_executors import BuiltInCodeExecutor
 from pydantic import BaseModel, Field
-import asyncio
 
 # -------------------------
 # Load API Key safely
@@ -44,7 +43,7 @@ model = Gemini(model="gemini-2.0-flash")
 agent = LlmAgent(
     name="currency_bot",
     model=model,
-    tools=[],  # tools will be added after
+    tools=[],
 )
 
 # Add tool
@@ -58,17 +57,20 @@ runner = InMemoryRunner(agent=agent)
 # -------------------------
 st.title("💱 AI Currency Converter")
 
-user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
+user_input = st.text_input("Amount in USD:", "50")
 
-def run_agent_sync(prompt: str):
+def run_agent(amount_usd: float):
     """
-    Run async agent code in a safe synchronous way for Streamlit
+    Run CurrencyConverter tool synchronously from Streamlit
     """
-    return asyncio.run(runner.run(prompt))
+    # Create Pydantic args object
+    args = ConvertArgs(amount=float(amount_usd))
+    # Run the tool via runner
+    return asyncio.run(tool.run(args))
 
 if st.button("Convert"):
     try:
-        response = run_agent_sync(user_input)
+        response = run_agent(user_input)
         st.write(response)
     except Exception as e:
         st.error(f"❌ Error: {e}")
