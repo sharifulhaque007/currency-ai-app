@@ -90,6 +90,10 @@ st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using Gold Debit Card")
 
 if st.button("Convert"):
-    response = anyio.run(runner.run, user_input)
+    import asyncio
+    # get current running loop
+    loop = asyncio.get_event_loop()
+    response = loop.run_until_complete(runner.run(user_input))
     st.write(response)
+
 
