@@ -1,14 +1,14 @@
 import os
 import streamlit as st
+import asyncio
 from google.adk.models.google_llm import Gemini
 from google.adk.agents import LlmAgent
 from google.adk.runners import InMemoryRunner
 from google.adk.tools import AgentTool
 from google.adk.code_executors import BuiltInCodeExecutor
-import anyio
 
 # -------------------------
-# Load API Key
+# API Key
 # -------------------------
 if "GOOGLE_API_KEY" in st.secrets:
     os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
@@ -29,7 +29,6 @@ def get_fee_for_payment_method(method: str) -> dict:
     if fee is not None:
         return {"status": "success", "fee_percentage": fee}
     return {"status": "error", "error_message": f"Payment method '{method}' not found"}
-
 
 def get_exchange_rate(base_currency: str, target_currency: str) -> dict:
     rate_database = {
@@ -69,14 +68,17 @@ st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using Gold Debit Card")
 
 # -------------------------
-# Helper to safely run async agent
+# Safe Async runner
 # -------------------------
-async def run_agent(input_text: str):
-    # Runner.run() takes a dict as input
-    context = {"input": input_text}
-    return await runner.run(context)
+def run_agent_sync(user_input: str):
+    context = {"input": user_input}
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:  # No loop in this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    return loop.run_until_complete(runner.run(context))
 
 if st.button("Convert"):
-    # Run async agent safely from Streamlit
-    response = anyio.from_thread.run(run_agent, user_input)
+    response = run_agent_sync(user_input)
     st.write(response)
