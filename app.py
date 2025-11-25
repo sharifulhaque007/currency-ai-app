@@ -1,6 +1,7 @@
 import os
 import streamlit as st
 import anyio
+
 from google.adk.models.google_llm import Gemini
 from google.adk.tools import AgentTool
 from google.adk.agents import LlmAgent
@@ -38,16 +39,13 @@ class CurrencyConverter(AgentTool):
 # Setup Model + Agent
 # -------------------------
 model = Gemini(model="gemini-2.0-flash")
-
 agent = LlmAgent(
     name="currency_bot",
     model=model,
-    instruction="You convert USD to BDT. If conversion request comes, use the tool."
+    instruction="You convert USD to BDT. Use the tool if a conversion request is given."
 )
-
 tool = CurrencyConverter(agent=agent)
 agent.tools.append(tool)
-
 runner = InMemoryRunner(agent=agent)
 
 # -------------------------
@@ -57,6 +55,6 @@ st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
 if st.button("Convert"):
-    # Run async agent safely with anyio
-    response = anyio.run(runner.run, user_input)
+    # Safe async call from Streamlit main thread
+    response = anyio.from_thread.run(runner.run, user_input)
     st.write(response)
