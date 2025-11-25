@@ -1,9 +1,8 @@
 import os
 import streamlit as st
 
-from google.genai import types
-from google.adk.tools import AgentTool
 from google.adk.models.google_llm import Gemini
+from google.adk.tools import AgentTool
 from google.adk.agents import LlmAgent
 from google.adk.runners import InMemoryRunner
 from google.adk.code_executors import BuiltInCodeExecutor
@@ -24,7 +23,7 @@ else:
 # Tool Schema
 # -------------------------
 class ConvertArgs(BaseModel):
-    amount: float = Field(..., description="Amount in USD")
+    amount: float = Field(..., description="Amount in USD to convert")
 
 
 # -------------------------
@@ -36,32 +35,33 @@ class CurrencyConverter(AgentTool):
     args_schema = ConvertArgs
 
     async def run(self, args: ConvertArgs):
-        rate = 120  # static exchange rate
-        return {"bdt": args.amount * rate}
+        rate = 120
+        return {"result": f"{args.amount * rate} BDT"}
 
 
 # -------------------------
-# Model
+# Model Setup
 # -------------------------
 model = Gemini(model="gemini-2.0-flash")
 
 
 # -------------------------
-# Agent
+# Agent Setup
 # -------------------------
 agent = LlmAgent(
     name="currency_bot",
     model=model,
-    instructions="You help convert USD to BDT. Use the tool whenever conversion is asked.",
-    tools=[], 
+    instructions=[
+        "You convert USD to BDT.",
+        "If conversion required, always use the tool."
+    ],
     code_executor=BuiltInCodeExecutor()
 )
 
-# attach tool (agent must exist first)
+# Attach Tool
 tool = CurrencyConverter(agent=agent)
 agent.tools.append(tool)
 
-# runner
 runner = InMemoryRunner(agent=agent)
 
 
@@ -70,11 +70,8 @@ runner = InMemoryRunner(agent=agent)
 # -------------------------
 st.title("💱 AI Currency Converter")
 
-user_input = st.text_input("Enter request:", "Convert 50 USD to BDT")
+user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
 if st.button("Convert"):
-    try:
-        output = runner.run(user_input)
-        st.success(output)
-    except Exception as e:
-        st.error(f"⚠️ Error: {e}")
+    result = runner.run(user_input)
+    st.success(result)
