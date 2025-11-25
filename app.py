@@ -143,7 +143,7 @@ def get_exchange_rate(base_currency: str, target_currency: str) -> dict:
             "error_message": f"Unsupported currency pair: {base_currency}/{target_currency}"
         }
 
-# Available Gemini models - Kaggle-এ available models
+# Available Gemini models
 AVAILABLE_MODELS = [
     "gemini-2.0-flash-exp",
     "gemini-1.5-flash-001",
@@ -228,36 +228,12 @@ async def run_kaggle_exact_code(query, model_name):
         enhanced_runner = InMemoryRunner(agent=enhanced_currency_agent)
         
         # Kaggle notebook এ আপনি await currency_runner.run_debug() ব্যবহার করেছেন
-        # Streamlit এ আমরা run_debug ব্যবহার করব
         response = await enhanced_runner.run_debug(query)
         return response
         
     except Exception as e:
         st.error(f"Kaggle exact code error: {e}")
         return None
-
-# Display response function - আপনার Kaggle helper function exactly
-def show_python_code_and_result(response):
-    """Your exact Kaggle notebook helper function"""
-    if not response:
-        return
-        
-    for i in range(len(response)):
-        # Check if the response contains a valid function call result from the code executor
-        if (
-            (response[i].content.parts)
-            and (response[i].content.parts[0])
-            and (response[i].content.parts[0].function_response)
-            and (response[i].content.parts[0].function_response.response)
-        ):
-            response_code = response[i].content.parts[0].function_response.response
-            if "result" in response_code and response_code["result"] != "```":
-                if "tool_code" in response_code["result"]:
-                    st.write("**Generated Python Code:**")
-                    st.code(response_code["result"].replace("tool_code", ""), language="python")
-                else:
-                    st.write("**Generated Python Response:**")
-                    st.write(response_code["result"])
 
 # Simple approach without retry config
 async def simple_agent_execution(query, model_name):
@@ -299,96 +275,28 @@ async def simple_agent_execution(query, model_name):
         st.error(f"Simple agent error: {e}")
         return None, "error"
 
-# Main UI
-st.header("💰 Currency Conversion")
-
-# Input fields
-col1, col2 = st.columns(2)
-
-with col1:
-    amount = st.number_input(
-        "Amount to Convert", 
-        min_value=0.01, 
-        value=100.0, 
-        step=10.0
-    )
-    base_currency = st.selectbox(
-        "From Currency", 
-        ["USD", "BDT", "EUR", "GBP", "JPY", "INR"]
-    )
-    
-with col2:
-    target_currency = st.selectbox(
-        "To Currency", 
-        ["BDT", "USD", "EUR", "GBP", "JPY", "INR"]
-    )
-    payment_method = st.selectbox(
-        "Payment Method", 
-        [
-            "Bank Transfer", 
-            "Platinum Credit Card", 
-            "Gold Debit Card",
-            "Credit Card",
-            "Debit Card", 
-            "PayPal",
-            "Cash"
-        ]
-    )
-
-# Convert button
-if st.button("🚀 Convert Currency", type="primary", use_container_width=True):
-    if base_currency == target_currency:
-        st.error("❌ Please select different currencies for conversion")
-    else:
-        with st.spinner("🔄 AI is processing your conversion..."):
-            try:
-                # Create the query - আপনার Kaggle notebook-এর মতো exactly
-                query = f"Convert {amount} {base_currency} to {target_currency} using {payment_method}. Show me the precise calculation."
-                
-                st.write(f"🤖 Using model: {selected_model}")
-                
-                # Try exact Kaggle code first
-                response = await run_kaggle_exact_code(query, selected_model)
-                
-                if response:
-                    st.success("✅ Conversion Complete! (Kaggle Exact Code)")
-                    st.markdown("---")
-                    show_python_code_and_result(response)
+# Display response function - আপনার Kaggle helper function exactly
+def show_python_code_and_result(response):
+    """Your exact Kaggle notebook helper function"""
+    if not response:
+        return
+        
+    for i in range(len(response)):
+        # Check if the response contains a valid function call result from the code executor
+        if (
+            (response[i].content.parts)
+            and (response[i].content.parts[0])
+            and (response[i].content.parts[0].function_response)
+            and (response[i].content.parts[0].function_response.response)
+        ):
+            response_code = response[i].content.parts[0].function_response.response
+            if "result" in response_code and response_code["result"] != "```":
+                if "tool_code" in response_code["result"]:
+                    st.write("**Generated Python Code:**")
+                    st.code(response_code["result"].replace("tool_code", ""), language="python")
                 else:
-                    st.warning("❌ Kaggle exact code failed. Trying simple approach...")
-                    
-                    # Try simple approach
-                    response_simple, method = await simple_agent_execution(query, selected_model)
-                    
-                    if response_simple:
-                        st.success(f"✅ Conversion Complete! (Simple Approach - {method})")
-                        st.markdown("---")
-                        
-                        # Display simple response
-                        if hasattr(response_simple, 'messages'):
-                            for message in response_simple.messages:
-                                if hasattr(message, 'content'):
-                                    for part in message.content.parts:
-                                        if hasattr(part, 'text') and part.text:
-                                            text = part.text.strip()
-                                            if text:
-                                                if "```" in text:
-                                                    st.code(text, language="python")
-                                                else:
-                                                    st.write(text)
-                    else:
-                        st.error("❌ All AI approaches failed. Showing manual calculation.")
-                
-                # Always show manual calculation as fallback
-                st.markdown("---")
-                st.header("🔢 Manual Calculation Results")
-                show_manual_calculation(amount, base_currency, target_currency, payment_method)
-                        
-            except Exception as e:
-                st.error(f"❌ Error during conversion: {e}")
-                st.markdown("---")
-                st.header("🔢 Manual Calculation Results")
-                show_manual_calculation(amount, base_currency, target_currency, payment_method)
+                    st.write("**Generated Python Response:**")
+                    st.write(response_code["result"])
 
 # Manual calculation function
 def show_manual_calculation(amount, base_currency, target_currency, payment_method):
@@ -441,6 +349,104 @@ Final amount: {final_amount:.2f} {target_currency}
     except Exception as e:
         st.error(f"Manual calculation error: {e}")
 
+# Main conversion function
+async def perform_conversion(amount, base_currency, target_currency, payment_method, selected_model):
+    """Main conversion function that handles all async operations"""
+    try:
+        # Create the query - আপনার Kaggle notebook-এর মতো exactly
+        query = f"Convert {amount} {base_currency} to {target_currency} using {payment_method}. Show me the precise calculation."
+        
+        st.write(f"🤖 Using model: {selected_model}")
+        
+        # Try exact Kaggle code first
+        response = await run_kaggle_exact_code(query, selected_model)
+        
+        if response:
+            st.success("✅ Conversion Complete! (Kaggle Exact Code)")
+            st.markdown("---")
+            show_python_code_and_result(response)
+            return True
+        else:
+            st.warning("❌ Kaggle exact code failed. Trying simple approach...")
+            
+            # Try simple approach
+            response_simple, method = await simple_agent_execution(query, selected_model)
+            
+            if response_simple:
+                st.success(f"✅ Conversion Complete! (Simple Approach - {method})")
+                st.markdown("---")
+                
+                # Display simple response
+                if hasattr(response_simple, 'messages'):
+                    for message in response_simple.messages:
+                        if hasattr(message, 'content'):
+                            for part in message.content.parts:
+                                if hasattr(part, 'text') and part.text:
+                                    text = part.text.strip()
+                                    if text:
+                                        if "```" in text:
+                                            st.code(text, language="python")
+                                        else:
+                                            st.write(text)
+                return True
+            else:
+                st.error("❌ All AI approaches failed. Showing manual calculation.")
+                return False
+                
+    except Exception as e:
+        st.error(f"❌ Error during conversion: {e}")
+        return False
+
+# Main UI
+st.header("💰 Currency Conversion")
+
+# Input fields
+col1, col2 = st.columns(2)
+
+with col1:
+    amount = st.number_input(
+        "Amount to Convert", 
+        min_value=0.01, 
+        value=100.0, 
+        step=10.0
+    )
+    base_currency = st.selectbox(
+        "From Currency", 
+        ["USD", "BDT", "EUR", "GBP", "JPY", "INR"]
+    )
+    
+with col2:
+    target_currency = st.selectbox(
+        "To Currency", 
+        ["BDT", "USD", "EUR", "GBP", "JPY", "INR"]
+    )
+    payment_method = st.selectbox(
+        "Payment Method", 
+        [
+            "Bank Transfer", 
+            "Platinum Credit Card", 
+            "Gold Debit Card",
+            "Credit Card",
+            "Debit Card", 
+            "PayPal",
+            "Cash"
+        ]
+    )
+
+# Convert button
+if st.button("🚀 Convert Currency", type="primary", use_container_width=True):
+    if base_currency == target_currency:
+        st.error("❌ Please select different currencies for conversion")
+    else:
+        with st.spinner("🔄 AI is processing your conversion..."):
+            # Run the async conversion
+            success = asyncio.run(perform_conversion(amount, base_currency, target_currency, payment_method, selected_model))
+            
+            # Always show manual calculation as fallback
+            st.markdown("---")
+            st.header("🔢 Manual Calculation Results")
+            show_manual_calculation(amount, base_currency, target_currency, payment_method)
+
 # Model testing section
 with st.sidebar:
     st.markdown("---")
@@ -452,7 +458,7 @@ with st.sidebar:
             test_query = f"Convert {test_amount} USD to BDT using Bank Transfer"
             
             # Try with selected model
-            response = await run_kaggle_exact_code(test_query, selected_model)
+            response = asyncio.run(run_kaggle_exact_code(test_query, selected_model))
             
             if response:
                 st.success("✅ Test successful!")
