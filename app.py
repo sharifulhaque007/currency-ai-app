@@ -91,7 +91,15 @@ user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using 
 
 
 if st.button("Convert"):
-    response = st.run(runner.run(user_input))   # <-- THIS FIXES EVERYTHING
+
+    async def safe_run():
+        return await runner.run(user_input)
+
+    try:
+        # If Streamlit runtime already has loop
+        response = asyncio.run(safe_run())
+    except RuntimeError:
+        # Fallback for Streamlit Cloud
+        response = asyncio.get_event_loop().create_task(safe_run())
+
     st.write(response)
-
-
