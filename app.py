@@ -53,11 +53,10 @@ runner = InMemoryRunner(agent=enhanced_currency_agent)
 # Streamlit UI
 st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using Gold Debit Card")
-
 import anyio
 
 if st.button("Convert"):
-    context = {"input": user_input}  # <-- dictionary
-    response = anyio.run(runner.run, context)
+    context = {"input": user_input}  # Runner.run() expects a dict
+    response = anyio.run(runner.run, context)  # single argument (dict) passes correctly
     st.write(response)
 
