@@ -193,7 +193,7 @@ def create_currency_agent():
     
     return currency_agent
 
-# Async conversion function
+# Async conversion function - FIXED VERSION
 async def run_conversion(query):
     """Run the currency conversion asynchronously"""
     try:
@@ -207,12 +207,64 @@ async def run_conversion(query):
             user_id="streamlit_user_001"
         )
         
+        # DEBUG: Session object inspect করুন
+        st.sidebar.write("🔍 Session Info:")
+        st.sidebar.write(f"Session Type: {type(session)}")
+        st.sidebar.write(f"Session Attributes: {dir(session)}")
+        
+        # Try different possible session ID attributes
+        session_id = None
+        
+        # Try different possible attribute names
+        if hasattr(session, 'session_id'):
+            session_id = session.session_id
+        elif hasattr(session, 'id'):
+            session_id = session.id
+        elif hasattr(session, 'name'):
+            session_id = session.name
+        else:
+            # If no session ID found, use the session object itself
+            st.sidebar.warning("Using session object directly")
+            response = await runner.run(session=session, input=query)
+            return response
+        
+        st.sidebar.write(f"Using Session ID: {session_id}")
+        
         # Run the conversion with session_id
-        response = await runner.run(session_id=session.session_id, input=query)
+        response = await runner.run(session_id=session_id, input=query)
         return response
         
     except Exception as e:
         st.error(f"Agent execution error: {e}")
+        return None
+
+# Alternative approach - Kaggle notebook style
+async def kaggle_style_conversion(query):
+    """Use the exact same approach as your Kaggle notebook"""
+    try:
+        # Replicate your exact Kaggle setup
+        calculation_agent = LlmAgent(
+            name="CalculationAgent",
+            model=Gemini(model="gemini-1.5-flash"),
+            instruction="""You output ONLY Python code. No text.""",
+            code_executor=BuiltInCodeExecutor(),
+        )
+
+        currency_agent = LlmAgent(
+            name="currency_agent", 
+            model=Gemini(model="gemini-1.5-flash"),
+            instruction="""Convert currency using tools. Use calculator for math.""",
+            tools=[get_fee_for_payment_method, get_exchange_rate, AgentTool(agent=calculation_agent)],
+        )
+        
+        runner = InMemoryRunner(agent=currency_agent)
+        
+        # Try the Kaggle notebook approach directly
+        response = await runner.run(input=query)
+        return response
+        
+    except Exception as e:
+        st.error(f"Kaggle style error: {e}")
         return None
 
 # Display response function
@@ -231,7 +283,7 @@ def display_response(response):
                             else:
                                 st.write(text)
 
-# Main UI - API key থাকলে শুধু এই部分 দেখাবে
+# Main UI
 st.header("💰 Currency Conversion")
 
 # Input fields
@@ -271,29 +323,56 @@ with col2:
         help="Select your payment method for fee calculation"
     )
 
-# Convert button
-if st.button("🚀 Convert Currency", type="primary", use_container_width=True):
-    if base_currency == target_currency:
-        st.error("❌ Please select different currencies for conversion")
-    else:
-        with st.spinner("🔄 AI is processing your conversion..."):
-            try:
-                # Create the query
-                query = f"Convert {amount} {base_currency} to {target_currency} using {payment_method}. Provide detailed breakdown with all calculations."
-                
-                # Run the conversion
-                response = asyncio.run(run_conversion(query))
-                
-                # Display results
-                st.markdown("---")
-                if response:
-                    st.success("✅ Conversion Complete!")
-                    display_response(response)
-                else:
-                    st.error("❌ No response received from the AI agent")
+# Convert buttons with different approaches
+col1, col2 = st.columns(2)
+
+with col1:
+    if st.button("🚀 Convert (Standard)", type="primary", use_container_width=True):
+        if base_currency == target_currency:
+            st.error("❌ Please select different currencies for conversion")
+        else:
+            with st.spinner("🔄 AI is processing your conversion..."):
+                try:
+                    # Create the query
+                    query = f"Convert {amount} {base_currency} to {target_currency} using {payment_method}. Provide detailed breakdown with all calculations."
                     
-            except Exception as e:
-                st.error(f"❌ Error during conversion: {e}")
+                    # Try the standard approach first
+                    response = asyncio.run(run_conversion(query))
+                    
+                    # Display results
+                    st.markdown("---")
+                    if response:
+                        st.success("✅ Conversion Complete!")
+                        display_response(response)
+                    else:
+                        st.error("❌ No response received from the AI agent")
+                        
+                except Exception as e:
+                    st.error(f"❌ Error during conversion: {e}")
+
+with col2:
+    if st.button("🔄 Convert (Kaggle Style)", use_container_width=True):
+        if base_currency == target_currency:
+            st.error("❌ Please select different currencies for conversion")
+        else:
+            with st.spinner("🔄 Using Kaggle notebook approach..."):
+                try:
+                    # Create the query
+                    query = f"Convert {amount} {base_currency} to {target_currency} using {payment_method}. Provide detailed breakdown with all calculations."
+                    
+                    # Try Kaggle notebook approach
+                    response = asyncio.run(kaggle_style_conversion(query))
+                    
+                    # Display results
+                    st.markdown("---")
+                    if response:
+                        st.success("✅ Conversion Complete!")
+                        display_response(response)
+                    else:
+                        st.error("❌ No response from Kaggle approach")
+                        
+                except Exception as e:
+                    st.error(f"❌ Kaggle style error: {e}")
 
 # Quick manual calculation fallback
 st.markdown("---")
