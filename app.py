@@ -1,8 +1,5 @@
-import os
 import streamlit as st
-import anyio
 import asyncio
-
 from google.genai import types
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -10,93 +7,71 @@ from google.adk.runners import InMemoryRunner
 from google.adk.tools import AgentTool
 from google.adk.code_executors import BuiltInCodeExecutor
 
-# ---------------- SAFE SECRET LOADING ----------------
-def load_api_key():
-    # Local environment variable support
-    if os.getenv("GOOGLE_API_KEY"):
-        return os.getenv("GOOGLE_API_KEY")
-    
-    # Streamlit Cloud secret support
-    if "GOOGLE_API_KEY" in st.secrets:
-        return st.secrets["GOOGLE_API_KEY"]
+# -------------------------
+#  CONFIG
+# -------------------------
+API_KEY = st.secrets["GOOGLE_API_KEY"]
 
-    # Clear error message if secret missing
-    st.error("""
-    ❌ GOOGLE_API_KEY not found!
-
-    Fix this by going to:
-
-    ▶️ Streamlit → Dashboard → App → Settings → Secrets
-
-    And add EXACTLY:
-
-    GOOGLE_API_KEY = "your_key_here"
-    """)
-    st.stop()
-
-API_KEY = load_api_key()
-os.environ["GOOGLE_API_KEY"] = API_KEY
-# -----------------------------------------------------
-
-# Retry config
 retry_config = types.HttpRetryOptions(
     attempts=5,
     exp_base=7,
-    initial_delay=1,
-    http_status_codes=[429, 500, 503, 504],
+    max_delay=45,
 )
 
-# Tools
-def get_fee_for_payment_method(method: str) -> dict:
-    fee_database = {
-        "platinum credit card": 0.02,
-        "gold debit card": 0.035,
-        "bank transfer": 0.01,
-    }
-    fee = fee_database.get(method.lower())
-    if fee:
-        return {"status": "success", "fee_percentage": fee}
-    return {"status": "error", "error_message": f"Payment method '{method}' not found"}
-
-def get_exchange_rate(base_currency: str, target_currency: str) -> dict:
-    rate_database = {
-        "usd": {"bdt": 120.00, "inr": 83.58, "eur": 0.93},
-        "bdt": {"usd": 0.008, "inr": 0.80, "eur": 0.009},
-    }
-    base = base_currency.lower()
-    target = target_currency.lower()
-    rate = rate_database.get(base, {}).get(target)
-    if rate:
-        return {"status": "success", "rate": rate}
-    return {"status": "error", "error_message": "Unsupported currency pair"}
-
-# Agents
-calculation_agent = LlmAgent(
-    name="CalculationAgent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
-    instruction="Return ONLY a Python code block that prints the answer."
+model = Gemini(
+    model_name="gemini-2.0-flash",
+    api_key=API_KEY,
+    http_retry=retry_config,
 )
 
-enhanced_currency_agent = LlmAgent(
-    name="enhanced_currency_agent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
-    instruction="You are a currency converter assistant. Follow rules strictly.",
-    tools=[get_fee_for_payment_method, get_exchange_rate, AgentTool(agent=calculation_agent)]
+# -------------------------
+#  CUSTOM TOOL EXAMPLE
+# -------------------------
+class exchangerate(AgentTool):
+    name: str = "exchange_rate"
+    description: str = "Convert USD to BDT using fixed multiplier"
+    args_schema: type = dict
+
+    def run(self, amount: dict) -> dict:
+        value = amount.get("usd", 0)
+        return {"bdt": value * 120}
+
+
+# -------------------------
+#  LLM AGENT
+# -------------------------
+agent = LlmAgent(
+    model=model,
+    tools=[exchangerate()],
+    code_executor=BuiltInCodeExecutor(),
+    instructions=[
+        "You are a currency converter bot.",
+        "If user gives USD amount convert it using the tool."
+    ],
 )
 
-runner = InMemoryRunner(agent=enhanced_currency_agent)
+runner = InMemoryRunner(agent=agent)
 
-# Streamlit UI
-st.title("💱 AI Currency Converter")
-user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using Gold Debit Card")
 
+# -------------------------
+#  ASYNC HELPER
+# -------------------------
+def run_async(task):
+    """Safely run async code inside Streamlit."""
+    try:
+        loop = asyncio.get_running_loop()
+        return loop.run_until_complete(task)
+    except RuntimeError:
+        return asyncio.run(task)
+
+
+# -------------------------
+#  UI
+# -------------------------
+st.title("💱 Currency AI Convertor")
+
+user_input = st.text_input("Enter text or amount to convert:")
 
 if st.button("Convert"):
-
-    async def safe_run():
-        return await runner.run(user_input)
-
-    response = asyncio.create_task(safe_run())
-    response = asyncio.run(safe_run())
-
+    response = run_async(runner.run(user_input))
     st.write(response)
