@@ -1,15 +1,14 @@
 import os
 import streamlit as st
-import asyncio
-
 from google.adk.models.google_llm import Gemini
-from google.adk.tools import AgentTool
 from google.adk.agents import LlmAgent
+from google.adk.tools import AgentTool
 from google.adk.runners import InMemoryRunner
+from google.adk.code_executors import BuiltInCodeExecutor
 from pydantic import BaseModel, Field
 
 # -------------------------
-# Load API Key safely
+# Load API Key
 # -------------------------
 if "GOOGLE_API_KEY" in st.secrets:
     os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
@@ -32,45 +31,37 @@ class CurrencyConverter(AgentTool):
     args_schema = ConvertArgs
 
     async def run(self, args: ConvertArgs):
-        rate = 120
-        return {"result": f"{args.amount * rate} BDT"}
+        rate = 120  # fixed conversion rate
+        return {"result": f"{args.amount} USD = {args.amount * rate} BDT"}
 
 # -------------------------
 # Setup Model + Agent
 # -------------------------
 model = Gemini(model="gemini-2.0-flash")
 
+# Create agent first
 agent = LlmAgent(
     name="currency_bot",
     model=model,
-    tools=[],
+    instructions="You are a currency conversion assistant. Use the CurrencyConverter tool whenever conversion is asked."
 )
 
-# Add tool
+# Assign tool
 tool = CurrencyConverter(agent=agent)
 agent.tools.append(tool)
 
+# Runner
 runner = InMemoryRunner(agent=agent)
 
 # -------------------------
-# UI
+# Streamlit UI
 # -------------------------
 st.title("💱 AI Currency Converter")
 
-user_input = st.text_input("Amount in USD:", "50")
-
-def run_agent(amount_usd: float):
-    """
-    Run CurrencyConverter tool synchronously from Streamlit
-    """
-    # Create Pydantic args object
-    args = ConvertArgs(amount=float(amount_usd))
-    # Run the tool via runner
-    return asyncio.run(tool.run(args))
+user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
 if st.button("Convert"):
-    try:
-        response = run_agent(user_input)
-        st.write(response)
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
+    import asyncio
+    # Run the agent with the prompt
+    response = asyncio.run(runner.run(user_input))
+    st.write(response)
