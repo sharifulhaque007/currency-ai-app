@@ -54,6 +54,10 @@ runner = InMemoryRunner(agent=enhanced_currency_agent)
 st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using Gold Debit Card")
 
+import anyio
+
 if st.button("Convert"):
-    response = anyio.run(runner.run, user_input)
+    # Runner.run expects a dictionary context
+    context = {"input": user_input}
+    response = anyio.run(runner.run, context)
     st.write(response)
