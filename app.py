@@ -95,11 +95,7 @@ if st.button("Convert"):
     async def safe_run():
         return await runner.run(user_input)
 
-    try:
-        # If Streamlit runtime already has loop
-        response = asyncio.run(safe_run())
-    except RuntimeError:
-        # Fallback for Streamlit Cloud
-        response = asyncio.get_event_loop().create_task(safe_run())
+    response = asyncio.create_task(safe_run())
+    response = asyncio.run(safe_run())
 
     st.write(response)
