@@ -1,63 +1,224 @@
 import streamlit as st
-import asyncio
+import os
+from google.genai import types
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.adk.runners import InMemoryRunner
 from google.adk.tools import AgentTool
 from google.adk.code_executors import BuiltInCodeExecutor
-import os
 
-# -------------------------
-# API Key
-# -------------------------
-if "GOOGLE_API_KEY" in st.secrets:
-    os.environ["GOOGLE_API_KEY"] = st.secrets["GOOGLE_API_KEY"]
-else:
-    st.error("❌ GOOGLE_API_KEY missing")
+# Streamlit পেজ কনফিগারেশন
+st.set_page_config(
+    page_title="Currency Converter AI",
+    page_icon="💱",
+    layout="wide"
+)
+
+# টাইটেল এবং ডেস্ক্রিপশন
+st.title("💱 AI Currency Converter")
+st.markdown("""
+এই অ্যাপ্লিকেশনটি আপনাকে বিভিন্ন কারেন্সি কনভার্ট করতে এবং পেমেন্ট মেথডের ফি হিসাব করতে সাহায্য করবে।
+""")
+
+# সাইডবারে API key ইনপুট
+st.sidebar.header("🔐 Configuration")
+api_key = st.sidebar.text_input("Google API Key", type="password")
+
+if not api_key:
+    st.warning("⚠️ Please enter your Google API Key in the sidebar to continue")
     st.stop()
 
-# -------------------------
-# Example tools
-# -------------------------
-def get_fee(method: str) -> dict:
-    return {"status": "success", "fee_percentage": 0.02}
+# API key সেটআপ
+try:
+    os.environ["GOOGLE_API_KEY"] = api_key
+    st.success("✅ API Key configured successfully!")
+except Exception as e:
+    st.error(f"❌ Error setting up API Key: {e}")
+    st.stop()
 
-def get_rate(base: str, target: str) -> dict:
-    return {"status": "success", "rate": 120}
-
-# -------------------------
-# Agents
-# -------------------------
-calc_agent = LlmAgent(
-    name="calc",
-    model=Gemini(model="gemini-2.5-flash-lite"),
-    instruction="Return ONLY a Python code block that prints the answer."
+# রিট্রি কনফিগারেশন
+retry_config = types.HttpRetryOptions(
+    attempts=5,
+    exp_base=7,
+    initial_delay=1,
+    http_status_codes=[429, 500, 503, 504],
 )
 
-currency_agent = LlmAgent(
-    name="currency_agent",
-    model=Gemini(model="gemini-2.5-flash-lite"),
-    instruction="Convert currencies using tools",
-    tools=[get_fee, get_rate, AgentTool(agent=calc_agent)]
+# Helper functions
+def get_fee_for_payment_method(method: str) -> dict:
+    """Looks up the transaction fee percentage for a given payment method."""
+    fee_database = {
+        "platinum credit card": 0.02,
+        "gold debit card": 0.035,
+        "bank transfer": 0.01,
+        "credit card": 0.025,
+        "debit card": 0.03,
+        "paypal": 0.029,
+        "cash": 0.0
+    }
+
+    fee = fee_database.get(method.lower())
+    if fee is not None:
+        return {"status": "success", "fee_percentage": fee}
+    else:
+        return {
+            "status": "error",
+            "error_message": f"Payment method '{method}' not found"
+        }
+
+def get_exchange_rate(base_currency: str, target_currency: str) -> dict:
+    """Looks up and returns the exchange rate between two currencies."""
+    rate_database = {
+        "usd": {
+            "eur": 0.93,
+            "jpy": 157.50,
+            "inr": 83.58,
+            "bdt": 120.00,
+            "gbp": 0.80,
+            "aud": 1.52
+        },
+        "bdt": {
+            "eur": 0.0078,
+            "jpy": 1.31,
+            "inr": 0.70,
+            "usd": 0.0083,
+            "gbp": 0.0067,
+            "aud": 0.0127
+        },
+        "eur": {
+            "usd": 1.08,
+            "bdt": 128.21,
+            "gbp": 0.86,
+            "jpy": 169.35
+        }
+    }
+
+    base = base_currency.lower()
+    target = target_currency.lower()
+
+    rate = rate_database.get(base, {}).get(target)
+    if rate is not None:
+        return {"status": "success", "rate": rate}
+    else:
+        return {
+            "status": "error",
+            "error_message": f"Unsupported currency pair: {base_currency}/{target_currency}"
+        }
+
+# Calculation Agent
+calculation_agent = LlmAgent(
+    name="CalculationAgent",
+    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
+    instruction="""You are a specialized calculator that ONLY responds with Python code.
+    Your task is to take a request for a calculation and translate it into a single block of Python code.
+    Rules:
+    1. Output MUST be ONLY Python code
+    2. No text before or after the code block
+    3. Code MUST calculate the result
+    4. Code MUST print the final result
+    """,
+    code_executor=BuiltInCodeExecutor(),
 )
 
-runner = InMemoryRunner(agent=currency_agent)
+# Enhanced Currency Agent
+enhanced_currency_agent = LlmAgent(
+    name="enhanced_currency_agent",
+    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
+    instruction="""You are a smart currency conversion assistant. Follow these steps:
+    1. Use get_fee_for_payment_method() for transaction fees
+    2. Use get_exchange_rate() for conversion rates
+    3. Check "status" field for errors
+    4. Use calculation_agent for all calculations
+    5. Provide detailed breakdown including fee percentage, fee amount, remaining amount, and exchange rate
+    """,
+    tools=[
+        get_fee_for_payment_method,
+        get_exchange_rate,
+        AgentTool(agent=calculation_agent),
+    ],
+)
 
-# -------------------------
 # Streamlit UI
-# -------------------------
-st.title("💱 AI Currency Converter")
-user_input = st.text_input("Ask:", "Convert 50 USD to BDT")
+st.header("💰 Currency Conversion")
 
-def run_agent_sync(user_input: str):
-    context = {"input": user_input}
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    return loop.run_until_complete(runner.run(context))
+col1, col2 = st.columns(2)
 
-if st.button("Convert"):
-    result = run_agent_sync(user_input)
-    st.write(result)
+with col1:
+    amount = st.number_input("Amount", min_value=0.01, value=100.0, step=10.0)
+    base_currency = st.selectbox("From Currency", ["USD", "BDT", "EUR", "GBP", "JPY", "INR", "AUD"])
+    
+with col2:
+    target_currency = st.selectbox("To Currency", ["BDT", "USD", "EUR", "GBP", "JPY", "INR", "AUD"])
+    payment_method = st.selectbox("Payment Method", [
+        "Bank Transfer", 
+        "Platinum Credit Card", 
+        "Gold Debit Card",
+        "Credit Card",
+        "Debit Card",
+        "PayPal",
+        "Cash"
+    ])
+
+# কনভার্সান বাটন
+if st.button("🚀 Convert Currency", type="primary"):
+    if base_currency == target_currency:
+        st.error("❌ Please select different currencies for conversion")
+    else:
+        with st.spinner("🔄 Processing your conversion..."):
+            try:
+                # Create runner
+                runner = InMemoryRunner(agent=enhanced_currency_agent)
+                
+                # Query তৈরি করুন
+                query = f"Convert {amount} {base_currency} to {target_currency} using {payment_method}. Show me the precise calculation."
+                
+                # রান করুন (সিনক্রোনাসভাবে)
+                response = runner.run_sync(query)
+                
+                # রেস্পন্স ডিসপ্লে
+                st.success("✅ Conversion Complete!")
+                st.markdown("---")
+                
+                # রেস্পন্স কন্টেন্ট ডিসপ্লে
+                for message in response:
+                    if hasattr(message, 'content') and hasattr(message.content, 'parts'):
+                        for part in message.content.parts:
+                            if hasattr(part, 'text'):
+                                st.write(part.text)
+                
+            except Exception as e:
+                st.error(f"❌ Error during conversion: {e}")
+
+# এক্সট্রা ফিচারস
+st.markdown("---")
+st.header("ℹ️ Additional Information")
+
+col3, col4 = st.columns(2)
+
+with col3:
+    st.subheader("💳 Supported Payment Methods & Fees")
+    fees_info = {
+        "Bank Transfer": "1%",
+        "Platinum Credit Card": "2%", 
+        "Gold Debit Card": "3.5%",
+        "Credit Card": "2.5%",
+        "Debit Card": "3%",
+        "PayPal": "2.9%",
+        "Cash": "0%"
+    }
+    
+    for method, fee in fees_info.items():
+        st.write(f"**{method}**: {fee} fee")
+
+with col4:
+    st.subheader("🌍 Supported Currencies")
+    st.write("USD, BDT, EUR, GBP, JPY, INR, AUD")
+    st.write("*More currencies coming soon*")
+
+# ফুটার
+st.markdown("---")
+st.markdown("""
+<div style='text-align: center'>
+    <p>Built with ❤️ using Streamlit and Google ADK</p>
+</div>
+""", unsafe_allow_html=True)
