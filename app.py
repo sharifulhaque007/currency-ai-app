@@ -154,10 +154,13 @@ async def run_currency_conversion(query):
         runner = InMemoryRunner(agent=agent)
         session_service = InMemorySessionService()
         
-        # Create a new session
-        session = await session_service.create_session()
+        # Create a new session with required parameters
+        session = await session_service.create_session(
+            app_name="currency_converter_app",
+            user_id="streamlit_user"
+        )
         
-        # Run the query - সঠিকভাবে run মেথড call করুন
+        # Run the query
         response = await runner.run(session=session, input=query)
         return response
         
