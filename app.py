@@ -7,9 +7,33 @@ from google.adk.runners import InMemoryRunner
 from google.adk.tools import AgentTool
 from google.adk.code_executors import BuiltInCodeExecutor
 
-# API Key setup
-API_KEY = os.getenv("GOOGLE_API_KEY") or st.secrets["GOOGLE_API_KEY"]
+# ---------------- SAFE SECRET LOADING ----------------
+def load_api_key():
+    # Local environment variable support
+    if os.getenv("GOOGLE_API_KEY"):
+        return os.getenv("GOOGLE_API_KEY")
+    
+    # Streamlit Cloud secret support
+    if "GOOGLE_API_KEY" in st.secrets:
+        return st.secrets["GOOGLE_API_KEY"]
+
+    # Clear error message if secret missing
+    st.error("""
+    ❌ GOOGLE_API_KEY not found!
+
+    Fix this by going to:
+
+    ▶️ Streamlit → Dashboard → App → Settings → Secrets
+
+    And add EXACTLY:
+
+    GOOGLE_API_KEY = "your_key_here"
+    """)
+    st.stop()
+
+API_KEY = load_api_key()
 os.environ["GOOGLE_API_KEY"] = API_KEY
+# -----------------------------------------------------
 
 # Retry config
 retry_config = types.HttpRetryOptions(
