@@ -1,11 +1,11 @@
 import os
 import streamlit as st
+import anyio
 from google.adk.models.google_llm import Gemini
 from google.adk.tools import AgentTool
 from google.adk.agents import LlmAgent
 from google.adk.runners import InMemoryRunner
 from pydantic import BaseModel, Field
-import asyncio
 
 # -------------------------
 # Load API Key
@@ -57,8 +57,6 @@ st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
 if st.button("Convert"):
-    # Get the current running event loop
-    loop = asyncio.get_event_loop()
-    # Run the async runner safely
-    response = loop.run_until_complete(runner.run(user_input))
+    # Run async agent safely with anyio
+    response = anyio.run(runner.run, user_input)
     st.write(response)
