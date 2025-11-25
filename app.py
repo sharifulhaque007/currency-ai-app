@@ -63,6 +63,9 @@ st.title("💱 AI Currency Converter")
 
 user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
+import anyio
+
 if st.button("Convert"):
-    response = runner.run(user_input)
+    # Run the async agent inside Streamlit
+    response = anyio.run(runner.run, user_input)
     st.success(response)
