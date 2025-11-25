@@ -5,6 +5,7 @@ from google.genai import types
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
 from google.adk.runners import InMemoryRunner
+from google.adk.sessions import InMemorySessionService
 from google.adk.tools import AgentTool
 from google.adk.code_executors import BuiltInCodeExecutor
 
@@ -23,7 +24,7 @@ st.markdown("""
 
 # সাইডবারে API key ইনপুট
 st.sidebar.header("🔐 Configuration")
-api_key = st.sidebar.text_input("Google API Key", type="password")
+api_key = st.sidebar.text_input("Google API_KEY", type="password")
 
 if not api_key:
     st.warning("⚠️ Please enter your Google API Key in the sidebar to continue")
@@ -39,13 +40,13 @@ except Exception as e:
 
 # রিট্রি কনফিগারেশন
 retry_config = types.HttpRetryOptions(
-    attempts=5,
-    exp_base=7,
+    attempts=3,
+    exp_base=2,
     initial_delay=1,
     http_status_codes=[429, 500, 503, 504],
 )
 
-# Helper functions
+# Helper functions - আপনার Kaggle কোড থেকে
 def get_fee_for_payment_method(method: str) -> dict:
     """Looks up the transaction fee percentage for a given payment method."""
     fee_database = {
@@ -106,54 +107,81 @@ def get_exchange_rate(base_currency: str, target_currency: str) -> dict:
             "error_message": f"Unsupported currency pair: {base_currency}/{target_currency}"
         }
 
-# Calculation Agent
-calculation_agent = LlmAgent(
-    name="CalculationAgent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
-    instruction="""You are a specialized calculator that ONLY responds with Python code.
-    Your task is to take a request for a calculation and translate it into a single block of Python code.
-    Rules:
-    1. Output MUST be ONLY Python code
-    2. No text before or after the code block
-    3. Code MUST calculate the result
-    4. Code MUST print the final result
-    """,
-    code_executor=BuiltInCodeExecutor(),
-)
+# Agents তৈরি করা
+def setup_agents():
+    """Setup all required agents"""
+    # Calculation Agent
+    calculation_agent = LlmAgent(
+        name="CalculationAgent",
+        model=Gemini(model="gemini-1.5-flash", retry_options=retry_config),
+        instruction="""You are a specialized calculator that ONLY responds with Python code.
+        Your task is to take a request for a calculation and translate it into a single block of Python code.
+        Rules:
+        1. Output MUST be ONLY Python code
+        2. No text before or after the code block
+        3. Code MUST calculate the result
+        4. Code MUST print the final result
+        """,
+        code_executor=BuiltInCodeExecutor(),
+    )
 
-# Enhanced Currency Agent
-enhanced_currency_agent = LlmAgent(
-    name="enhanced_currency_agent",
-    model=Gemini(model="gemini-2.5-flash-lite", retry_options=retry_config),
-    instruction="""You are a smart currency conversion assistant. Follow these steps:
-    1. Use get_fee_for_payment_method() for transaction fees
-    2. Use get_exchange_rate() for conversion rates
-    3. Check "status" field for errors
-    4. Use calculation_agent for all calculations
-    5. Provide detailed breakdown including fee percentage, fee amount, remaining amount, and exchange rate
-    """,
-    tools=[
-        get_fee_for_payment_method,
-        get_exchange_rate,
-        AgentTool(agent=calculation_agent),
-    ],
-)
+    # Enhanced Currency Agent
+    enhanced_currency_agent = LlmAgent(
+        name="enhanced_currency_agent",
+        model=Gemini(model="gemini-1.5-flash", retry_options=retry_config),
+        instruction="""You are a smart currency conversion assistant. Follow these steps:
+        1. Use get_fee_for_payment_method() for transaction fees
+        2. Use get_exchange_rate() for conversion rates
+        3. Check "status" field for errors
+        4. Use calculation_agent for all calculations
+        5. Provide detailed breakdown including fee percentage, fee amount, remaining amount, and exchange rate
+        """,
+        tools=[
+            get_fee_for_payment_method,
+            get_exchange_rate,
+            AgentTool(agent=calculation_agent),
+        ],
+    )
+    
+    return enhanced_currency_agent
 
 # Async function for running the agent
 async def run_currency_conversion(query):
     """Run the currency conversion asynchronously"""
-    runner = InMemoryRunner(agent=enhanced_currency_agent)
-    response = await runner.run(query)
-    return response
+    try:
+        # Agent setup
+        agent = setup_agents()
+        runner = InMemoryRunner(agent=agent)
+        session_service = InMemorySessionService()
+        
+        # Create a new session
+        session = await session_service.create_session()
+        
+        # Run the query - সঠিকভাবে run মেথড call করুন
+        response = await runner.run(session=session, input=query)
+        return response
+        
+    except Exception as e:
+        st.error(f"Agent execution error: {e}")
+        return None
 
 # Helper function to display response
 def display_response(response):
     """Display the agent response in a formatted way"""
-    for message in response:
+    if not response:
+        return
+        
+    for message in response.messages:
         if hasattr(message, 'content') and hasattr(message.content, 'parts'):
             for part in message.content.parts:
                 if hasattr(part, 'text') and part.text:
-                    st.write(part.text)
+                    # Format the response nicely
+                    text = part.text
+                    if "```" in text:
+                        # Code block formatting
+                        st.code(text, language="python")
+                    else:
+                        st.write(text)
 
 # Streamlit UI
 st.header("💰 Currency Conversion")
@@ -189,23 +217,24 @@ if st.button("🚀 Convert Currency", type="primary"):
                 # Async function run করুন
                 response = asyncio.run(run_currency_conversion(query))
                 
-                # রেস্পন্স ডিসপ্লে
-                st.success("✅ Conversion Complete!")
-                st.markdown("---")
-                
-                display_response(response)
+                if response:
+                    st.success("✅ Conversion Complete!")
+                    st.markdown("---")
+                    display_response(response)
+                else:
+                    st.error("❌ No response received from the agent")
                 
             except Exception as e:
                 st.error(f"❌ Error during conversion: {e}")
 
-# এক্সট্রা ফিচারস
+# সরলীকৃত manual calculation (fallback)
 st.markdown("---")
-st.header("ℹ️ Additional Information")
+st.header("🔢 Quick Manual Calculation")
 
 col3, col4 = st.columns(2)
 
 with col3:
-    st.subheader("💳 Supported Payment Methods & Fees")
+    st.subheader("💳 Payment Method Fees")
     fees_info = {
         "Bank Transfer": "1%",
         "Platinum Credit Card": "2%", 
@@ -220,9 +249,11 @@ with col3:
         st.write(f"**{method}**: {fee} fee")
 
 with col4:
-    st.subheader("🌍 Supported Currencies")
-    st.write("USD, BDT, EUR, GBP, JPY, INR, AUD")
-    st.write("*More currencies coming soon*")
+    st.subheader("🌍 Exchange Rates (Sample)")
+    st.write("USD to BDT: 120.00")
+    st.write("BDT to USD: 0.0083")
+    st.write("USD to EUR: 0.93")
+    st.write("EUR to BDT: 128.21")
 
 # ফুটার
 st.markdown("---")
