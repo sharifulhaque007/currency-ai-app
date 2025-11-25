@@ -23,11 +23,11 @@ else:
 # Tool Schema
 # -------------------------
 class ConvertArgs(BaseModel):
-    amount: float = Field(..., description="Amount in USD to convert")
+    amount: float = Field(..., description="Amount in USD")
 
 
 # -------------------------
-# Tool Definition
+# Tool
 # -------------------------
 class CurrencyConverter(AgentTool):
     name: str = "usd_to_bdt"
@@ -40,25 +40,16 @@ class CurrencyConverter(AgentTool):
 
 
 # -------------------------
-# Model Setup
+# Setup Model + Agent
 # -------------------------
 model = Gemini(model="gemini-2.0-flash")
 
-
-# -------------------------
-# Agent Setup
-# -------------------------
 agent = LlmAgent(
     name="currency_bot",
     model=model,
-    instructions=[
-        "You convert USD to BDT.",
-        "If conversion required, always use the tool."
-    ],
-    code_executor=BuiltInCodeExecutor()
+    instruction="You convert USD to BDT. If conversion request comes, use the tool."
 )
 
-# Attach Tool
 tool = CurrencyConverter(agent=agent)
 agent.tools.append(tool)
 
@@ -73,5 +64,5 @@ st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
 if st.button("Convert"):
-    result = runner.run(user_input)
-    st.success(result)
+    response = runner.run(user_input)
+    st.success(response)
