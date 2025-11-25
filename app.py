@@ -57,7 +57,7 @@ user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using 
 import anyio
 
 if st.button("Convert"):
-    # Runner.run expects a dictionary context
-    context = {"input": user_input}
+    context = {"input": user_input}  # <-- dictionary
     response = anyio.run(runner.run, context)
     st.write(response)
+
