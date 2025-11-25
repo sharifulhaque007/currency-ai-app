@@ -1,5 +1,7 @@
 import os
 import streamlit as st
+import anyio
+
 from google.genai import types
 from google.adk.agents import LlmAgent
 from google.adk.models.google_llm import Gemini
@@ -88,6 +90,6 @@ st.title("💱 AI Currency Converter")
 user_input = st.text_input("Ask something like:", "Convert 500 USD to BDT using Gold Debit Card")
 
 if st.button("Convert"):
-    import asyncio
-    response = asyncio.run(runner.run(user_input))
+    response = anyio.run(runner.run, user_input)
     st.write(response)
+
