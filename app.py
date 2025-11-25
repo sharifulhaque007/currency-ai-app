@@ -1,13 +1,12 @@
-import os
 import streamlit as st
-
 from google.adk.models.google_llm import Gemini
-from google.adk.tools import AgentTool
 from google.adk.agents import LlmAgent
+from google.adk.tools import AgentTool
 from google.adk.runners import InMemoryRunner
 from google.adk.code_executors import BuiltInCodeExecutor
 from pydantic import BaseModel, Field
-
+import asyncio
+import os
 
 # -------------------------
 # Load API Key
@@ -18,13 +17,11 @@ else:
     st.error("❌ GOOGLE_API_KEY missing in Streamlit Secrets")
     st.stop()
 
-
 # -------------------------
 # Tool Schema
 # -------------------------
 class ConvertArgs(BaseModel):
     amount: float = Field(..., description="Amount in USD")
-
 
 # -------------------------
 # Tool
@@ -37,7 +34,6 @@ class CurrencyConverter(AgentTool):
     async def run(self, args: ConvertArgs):
         rate = 120
         return {"result": f"{args.amount * rate} BDT"}
-
 
 # -------------------------
 # Setup Model + Agent
@@ -55,18 +51,16 @@ agent.tools.append(tool)
 
 runner = InMemoryRunner(agent=agent)
 
-
 # -------------------------
 # UI
 # -------------------------
 st.title("💱 AI Currency Converter")
-
 user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
-import anyio
-
 if st.button("Convert"):
-    # Run async agent safely from Streamlit
-    response = anyio.from_thread.run(runner.run, user_input)
+    # Safe async execution in Streamlit
+    async def run_agent():
+        return await runner.run(user_input)
+    
+    response = asyncio.run(run_agent())
     st.write(response)
-
