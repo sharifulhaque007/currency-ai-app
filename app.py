@@ -63,7 +63,6 @@ st.title("💱 AI Currency Converter")
 
 user_input = st.text_input("Ask something:", "Convert 50 USD to BDT")
 
-)
 import anyio
 
 if st.button("Convert"):
